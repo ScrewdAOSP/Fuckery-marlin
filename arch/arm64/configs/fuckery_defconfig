@@ -490,7 +490,7 @@ CONFIG_ARM64_CPU_SUSPEND=y
 #
 # CPU Power Management
 #
-
+CONFIG_CPU_INPUT_BOOST=y
 #
 # CPU Idle
 #
