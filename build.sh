@@ -11,24 +11,23 @@ clear
 # Resources
 THREAD="-j$(grep -c ^processor /proc/cpuinfo)"
 KERNEL="Image.gz-dtb"
-DEFCONFIG="hells_defconfig"
+DEFCONFIG="fuckery_defconfig"
 
 # Kernel Details
-BASE_HC_VER="hC"
-VER="-Alpha-1.4-gcc6"
+BASE_HC_VER="fC"
+VER="-fuckery"
 HC_VER="$BASE_HC_VER$VER"
 
 # Vars
-export LOCALVERSION=-`echo $HC_VER`
+export LOCALVERSION=-`echo $fC_VER`
 export ARCH=arm64
 export SUBARCH=arm64
 
 # Paths
 KERNEL_DIR=`pwd`
-REPACK_DIR="${HOME}/Android/Kernel/hC-PXL-anykernel"
-ZIP_MOVE="${HOME}/Android/Kernel/hC-releases/PXL"
+REPACK_DIR="${HOME}/Android/Kernel/fC-PXL-anykernel"
+ZIP_MOVE="${HOME}/Android/Kernel/fC-releases/PXL"
 ZIMAGE_DIR="${HOME}/Android/Kernel/hells-Core-PXL/arch/arm64/boot"
-DB_FOLDER="${HOME}/Dropbox/Kernel-Betas/PXL"
 
 # Functions
 function clean_all {

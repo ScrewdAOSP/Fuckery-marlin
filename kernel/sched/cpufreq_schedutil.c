@@ -19,9 +19,7 @@
 #include "sched.h"
 #include "tune.h"
 
-#ifdef CONFIG_SCHED_WALT
 unsigned long boosted_cpu_util(int cpu);
-#endif
 
 /* Stub out fast switch routines present on mainline to reduce the backport
  * overhead. */
@@ -188,6 +186,15 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	return cpufreq_driver_resolve_freq(policy, freq);
 }
 
+static inline bool use_pelt(void)
+{
+#ifdef CONFIG_SCHED_WALT
+	return (!sysctl_sched_use_walt_cpu_util || walt_disabled);
+#else
+	return true;
+#endif
+}
+
 static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 {
 	int cpu = smp_processor_id();
@@ -204,11 +211,10 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 	rt = div64_u64(rq->rt_avg, sched_avg_period() + delta);
 	rt = (rt * max_cap) >> SCHED_CAPACITY_SHIFT;
 
-	*util = min(rq->cfs.avg.util_avg + rt, max_cap);
-#ifdef CONFIG_SCHED_WALT
-	if (!walt_disabled && sysctl_sched_use_walt_cpu_util)
-		*util = boosted_cpu_util(cpu);
-#endif
+	*util = boosted_cpu_util(cpu);
+	if (likely(use_pelt()))
+		*util = min((*util + rt), max_cap);
+
 	*max = max_cap;
 }
 
@@ -368,15 +374,15 @@ static void sugov_irq_work(struct irq_work *irq_work)
 	sg_policy = container_of(irq_work, struct sugov_policy, irq_work);
 
 	/*
-	 * For RT and deadline tasks, the schedutil governor shoots the
-	 * frequency to maximum. Special care must be taken to ensure that this
-	 * kthread doesn't result in the same behavior.
+	 * For Real Time and Deadline tasks, schedutil governor shoots the
+	 * frequency to maximum. And special care must be taken to ensure that
+	 * this kthread doesn't result in that.
 	 *
 	 * This is (mostly) guaranteed by the work_in_progress flag. The flag is
-	 * updated only at the end of the sugov_work() function and before that
-	 * the schedutil governor rejects all other frequency scaling requests.
+	 * updated only at the end of the sugov_work() and before that schedutil
+	 * rejects all other frequency scaling requests.
 	 *
-	 * There is a very rare case though, where the RT thread yields right
+	 * Though there is a very rare case where the RT thread yields right
 	 * after the work_in_progress flag is cleared. The effects of that are
 	 * neglected for now.
 	 */
@@ -472,8 +478,10 @@ static struct kobj_type sugov_tunables_ktype = {
 };
 
 /********************** cpufreq governor interface *********************/
-
-static struct cpufreq_governor schedutil_gov;
+#ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+static
+#endif
+struct cpufreq_governor cpufreq_gov_schedutil;
 
 static struct sugov_policy *sugov_policy_alloc(struct cpufreq_policy *policy)
 {
@@ -484,12 +492,15 @@ static struct sugov_policy *sugov_policy_alloc(struct cpufreq_policy *policy)
 		return NULL;
 
 	sg_policy->policy = policy;
+	init_irq_work(&sg_policy->irq_work, sugov_irq_work);
+	mutex_init(&sg_policy->work_lock);
 	raw_spin_lock_init(&sg_policy->update_lock);
 	return sg_policy;
 }
 
 static void sugov_policy_free(struct sugov_policy *sg_policy)
 {
+	mutex_destroy(&sg_policy->work_lock);
 	kfree(sg_policy);
 }
 
@@ -523,9 +534,6 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
 
 	sg_policy->thread = thread;
 	kthread_bind_mask(thread, policy->related_cpus);
-	init_irq_work(&sg_policy->irq_work, sugov_irq_work);
-	mutex_init(&sg_policy->work_lock);
-
 	wake_up_process(thread);
 
 	return 0;
@@ -539,7 +547,6 @@ static void sugov_kthread_stop(struct sugov_policy *sg_policy)
 
 	flush_kthread_worker(&sg_policy->worker);
 	kthread_stop(sg_policy->thread);
-	mutex_destroy(&sg_policy->work_lock);
 }
 
 static struct sugov_tunables *sugov_tunables_alloc(struct sugov_policy *sg_policy)
@@ -655,17 +662,17 @@ static int sugov_init(struct cpufreq_policy *policy)
 
 	ret = kobject_init_and_add(&tunables->attr_set.kobj, &sugov_tunables_ktype,
 				   get_governor_parent_kobj(policy), "%s",
-				   schedutil_gov.name);
+				   cpufreq_gov_schedutil.name);
 	if (ret)
 		goto fail;
 
-out:
+ out:
 	mutex_unlock(&global_tunables_lock);
 
 	cpufreq_enable_fast_switch(policy);
 	return 0;
 
-fail:
+ fail:
 	policy->governor_data = NULL;
 	sugov_tunables_free(tunables);
 
@@ -751,10 +758,8 @@ static int sugov_stop(struct cpufreq_policy *policy)
 
 	synchronize_sched();
 
-	if (!policy->fast_switch_enabled) {
-		irq_work_sync(&sg_policy->irq_work);
-		kthread_cancel_work_sync(&sg_policy->work);
-	}
+	irq_work_sync(&sg_policy->irq_work);
+	kthread_cancel_work_sync(&sg_policy->work);
 
 	return 0;
 }
@@ -796,7 +801,7 @@ static int cpufreq_schedutil_cb(struct cpufreq_policy *policy,
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
 static
 #endif
-struct cpufreq_governor schedutil_gov = {
+struct cpufreq_governor cpufreq_gov_schedutil = {
 	.name = "schedutil",
 	.governor = cpufreq_schedutil_cb,
 	.owner = THIS_MODULE,
@@ -804,6 +809,6 @@ struct cpufreq_governor schedutil_gov = {
 
 static int __init sugov_register(void)
 {
-	return cpufreq_register_governor(&schedutil_gov);
+	return cpufreq_register_governor(&cpufreq_gov_schedutil);
 }
 fs_initcall(sugov_register);
