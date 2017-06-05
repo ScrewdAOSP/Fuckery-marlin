@@ -297,8 +297,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -fgcse-las -fgraphite -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -pipe -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-variable -Wno-unused-value
-HOSTCXXFLAGS = -O3 -fgcse-las -fgraphite -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -pipe
+HOSTCFLAGS   = -O3 -fomit-frame-pointer -fgcse-las -fgraphite -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -pipe -std=gnu89 -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-variable -Wno-unused-value -w -std=gnu11
+HOSTCXXFLAGS = -O3 -fgcse-las -fgraphite -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -pipe -w -std=gnu++11
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
 HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
@@ -371,15 +371,10 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-GRAPHITE	= -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -floop-flatten
-FLAGS_MODULE   = $(GRAPHITE)
-AFLAGS_MODULE   = $(GRAPHITE)
-LDFLAGS_MODULE  = --strip-debug
-CFLAGS_KERNEL	= $(GRAPHITE) -fmodulo-sched -fmodulo-sched-allow-regmoves -ftree-loop-vectorize -ftree-loop-distribute-patterns -ftree-slp-vectorize -fvect-cost-model -ftree-partial-pre -fgcse-after-reload -fgcse-lm -fgcse-sm -fsched-spec-load -ffast-math -fsingle-precision-constant -fpredictive-commoning 
-AFLAGS_KERNEL	= $(GRAPHITE)
-CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
-CFLAGS_KCOV	= -fsanitize-coverage=trace-pc
-
+GRAPHITE	= -fgraphite -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block -floop-flatten
+EXTRA_OPTS	= -fmodulo-sched -fmodulo-sched-allow-regmoves -g0 -ftree-loop-vectorize -ftree-loop-distribute-patterns -ftree-slp-vectorize -fvect-cost-model -ftree-partial-pre -fgcse-after-reload -fgcse-lm -fgcse-sm -fsched-spec-load -ffast-math -fsingle-precision-constant -fpredictive-commoning -mlow-precision-recip-sqrt -mpc-relative-literal-loads
+CORTEX_OPTS	= -march=armv8-a+crypto -mcpu=cortex-a57+crypto -mtune=cortex-a57.cortex-a53
+GCC_OPTS	= $(GRAPHITE) $(EXTRA_OPTS) $(CORTEX_OPTS)
 
 # Use USERINCLUDE when you must reference the UAPI directories only.
 USERINCLUDE    := \
@@ -400,21 +395,12 @@ LINUXINCLUDE    := \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
-KBUILD_CFLAGS   := $(GRAPHITE) -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
-                   -Wno-error=misleading-indentation -Wno-error=discarded-array-qualifiers -Wno-error=return-local-addr \
-		           -fno-strict-aliasing -fno-common \
-		           -Werror-implicit-function-declaration \
-		           -Wno-format-security \
-           		   -fmodulo-sched -fmodulo-sched-allow-regmoves -ffast-math \
-                   -funswitch-loops -fpredictive-commoning -fgcse-after-reload \
-		           -fno-delete-null-pointer-checks -Wno-error=bool-compare \
-		           -ftree-loop-vectorize -ftree-loop-distribute-patterns -ftree-slp-vectorize \
-                   -fvect-cost-model -ftree-partial-pre -Wno-error=unused-const-variable= -Wno-error=misleading-indentation\
-                   -fgcse-lm -fgcse-sm -fsched-spec-load -fsingle-precision-constant \
-                   -mcpu=cortex-a57.cortex-a53 -mtune=cortex-a57.cortex-a53 \
-		           -std=gnu89
-
-KBUILD_CFLAGS	+= -march=armv8-a+crc --param l1-cache-size=32 --param l1-cache-line-size=32 --param l2-cache-size=2048 -Wno-unused-const-variable -Wno-error=return-local-addr
+KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -Werror-implicit-function-declaration \
+                   -Wno-format-security -fmodulo-sched -Wno-bool-compare -Wno-memset-transposed-args -Wno-unused-const-variable \
+                   -Wno-misleading-indentation -Wno-tautological-compare -fgcse-after-reload -fno-delete-null-pointer-checks -ftree-loop-vectorize \
+                   -ftree-loop-distribute-patterns -ftree-slp-vectorize -fvect-cost-model -ftree-partial-pre -fgcse-lm -fgcse-sm -fsched-spec-load \
+                   -fmodulo-sched-allow-regmoves -ffast-math -funswitch-loops -fpredictive-commoning -fsingle-precision-constant -fno-store-merging \
+                   -std=gnu11 -march=armv8-a+crc --param l1-cache-size=32 --param l1-cache-line-size=32 --param l2-cache-size=2048 -Wno-unused-const-variable -Wno-error=return-local-addr
 
 # Snapdragon 820 doesn't need 835769/843419 erratum fixes
 # some toolchain enables those fixes automatically, so opt-out
@@ -640,9 +626,11 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-PIE)
 KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= -O3 $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS += $(call cc-disable-warning,maybe-uninitialized)
+KBUILD_CFLAGS += $(call cc-disable-warning,array-bounds)
 else
-KBUILD_CFLAGS	+= -O3
+KBUILD_CFLAGS	+= -Ofast -Wno-maybe-uninitialized
 KBUILD_CFLAGS += $(call cc-disable-warning,maybe-uninitialized)
 KBUILD_CFLAGS += $(call cc-disable-warning,array-bounds)
 endif
